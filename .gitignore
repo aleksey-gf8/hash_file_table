@@ -1,0 +1,11 @@
+# ---files ---
+*.xlsx
+*.docx
+*.pdf
+*.zip
+*.txt
+
+# ---directories---
+/.vscode/
+/venv/
+/sample_data/
