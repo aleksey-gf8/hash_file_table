@@ -4,6 +4,8 @@
 *.pdf
 *.zip
 *.txt
+*.cmd
+*.bat
 
 # ---directories---
 /.vscode/
