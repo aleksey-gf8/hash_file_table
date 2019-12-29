@@ -1,14 +1,57 @@
 import os
+import time
 import glob
 import hashlib
 import openpyxl
 
 
 # types of files to be processed
-file_extension = {'.xlsx', '.xls', '.docx', '.doc', '.pdf'}
+file_extension = {'.xlsx', '.xls', '.docx', '.doc'}
+
+# skip_this_folder
+name_skip_folder = {'V:\\00 ', 'V:\\01 '}
+
+# global var
+auditors_list = []
+
+OUT_FILE_NAME = r'Акт сдачи в архив электронных документов'
+SKR_VALIDATOR = 'Иванов И.И.'
+
+
+def get_auditors_list(source_path):
+    """ returns a list of auditors who worked on the audit
+        taken from a file ".\05  Аудит  СВК\05.00 Содержание.xlsx"
+    """
+    source_book = "V:\\05  Аудит  СВК\\05.00 Содержание.xlsx"
+    if not os.path.isfile(source_book):
+        print('"This file does not exist": {0}'.format(source_book))
+        return None  
+    # читаем excel-файл
+    wb = openpyxl.load_workbook(source_book)
+    if wb.sheetnames.count('12') == 0:
+        print('"Sheet name 12 does not exist": {0}'.format(source_book))
+        return None
+    result = []
+    # делаем 12 лист активным
+    wb.active = 11
+    # получаем активный лист
+    sheet = wb.active
+    if sheet['A29'].value == 1:
+        result.append(sheet['B29'].value)
+    if sheet['A31'].value == 'Руководитель проверки:':
+        result.append(sheet['B31'].value)
+    else:
+        numbers_by_row = [32, 33, 34, 35]
+        for row_count in numbers_by_row:
+            if sheet.cell(row = row_count, column = 1).value == 'Руководитель проверки:':
+                result.append(sheet.cell(row = row_count, column = 2).value)
+                break
+    return result
 
 
 def get_source_path():
+    """ returns the path to the folder where the data is stored (files)
+    """
     if "MY_SOURCE_PATH" in os.environ:
         # имя каталога без кавычек
         return os.environ["MY_SOURCE_PATH"].replace('"', '')
@@ -23,7 +66,14 @@ def file_is_needed(file):
     find_dot = file.rfind('.')
     if find_dot == -1:
         return False
-    return (file[find_dot:]in file_extension)
+    return (file[find_dot:] in file_extension)
+
+
+def skip_this_folder(file):
+    """ Check - you need to skip this folder. If need, then return True,
+    otherwise - False.
+    """
+    return (file[0:6] in name_skip_folder)
 
 
 def remove_link_to_v():
@@ -75,8 +125,15 @@ def create_table(file_list):
     """ create а table from a 'file_list' each row consists of:
     file name + file hash + author + validator
     """
-    author = 'Boshirov R.'
-    validator = 'Petrov A.'
+    global auditors_list
+    auditors_list = get_auditors_list(source_path)
+    if auditors_list:
+        author = auditors_list[0]
+        validator = auditors_list[1]
+    else:
+        print("no read author")
+        author = 'author'
+        validator = 'validator'        
     result_table = []
     for file in file_list:
         # check the current list item "file_list" this is a file?
@@ -88,17 +145,20 @@ def create_table(file_list):
             print('"This file is not needed": {0}'.format(file))
             # этот файл не нужен, выполняем переход к следующей итерации цикла.
             continue
-
+        if skip_this_folder(file):
+            print('"you need to skip this folder": {0}'.format(file))
+            # этот файл не нужен, выполняем переход к следующей итерации цикла.
+            continue
         print('обрабатываем файл: {0}'.format(file))
-
         curr_line = {}
         # file-name = file[2:]
         curr_line.update({'file-name': file[2:]})
+        modtime = time.localtime(os.path.getmtime(file))
+        curr_line['file_modify'] = time.strftime("%d-%m-%Y %H:%M:%S", modtime)
         curr_line.update({'Hash-MD5': get_hash_md5(file)})
         curr_line['author'] = author
         curr_line['validator'] = validator
         result_table.append(curr_line)
-
     return result_table
 
 
@@ -123,14 +183,15 @@ def save_table_to_xlsx_file(result_table, result_path):
     sheet = wb['Список файлов']
     # create a header row
     sheet['A1'] = '№№'
-    sheet['B1'] = 'Полное Имя файла'
+    sheet['B1'] = 'Имя файла относительно корня проекта'
     sheet.column_dimensions['B'].width = 100
-    sheet['C1'] = 'Хэш-сумма (MD5) файла'
-    sheet.column_dimensions['C'].width = 30
-    sheet['D1'] = 'Автор файла'
-    sheet.column_dimensions['D'].width = 20
-    sheet['E1'] = 'Файл проверил'
-    sheet.column_dimensions['B'].width = 20
+    sheet['C1'] = 'дата последнего изменения'
+    sheet['D1'] = 'Хэш-сумма (MD5) файла'
+    # sheet.column_dimensions['C'].width = 30
+    sheet['E1'] = 'Автор файла'
+    # sheet.column_dimensions['D'].width = 20
+    sheet['F1'] = 'Файл проверил'
+    # sheet.column_dimensions['B'].width = 20
 
     row = 1
     for line_dict in result_table:
@@ -148,11 +209,15 @@ def save_table_to_xlsx_file(result_table, result_path):
     cell = sheet.cell(row=row+2, column=col)
     cell.value = f'Исходный каталог = \"{source_path}\"'
 
+    validator = auditors_list[1] if auditors_list else 'validator'
     cell = sheet.cell(row=row+4, column=col)
-    cell.value = f'Количество файлов = {len(result_table)}'
+    cell.value = f'Сдал Руководитель проверки: {validator}'
+    cell = sheet.cell(row=row+6, column=col)
+    cell.value = f'Проверил Руководитель Контрольной Службы: {SKR_VALIDATOR}'
+
     f_name = result_path + '.xlsx'
     wb.save(f_name)
-
+    
 
 def process_create_file_table(source_path, result_path):
     """ Creates a list of all files as: file name, hash, author """
@@ -169,10 +234,10 @@ def process_create_file_table(source_path, result_path):
     remove_link_to_v()
 
 
-if '__name__' == '__name__':
+if '__name__' == '__main__':
 
     source_path = get_source_path()
-    result_path = r'result'
+    result_path = OUT_FILE_NAME
     process_create_file_table(
         source_path,
         result_path

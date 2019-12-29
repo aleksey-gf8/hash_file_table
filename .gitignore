@@ -6,6 +6,7 @@
 *.txt
 *.cmd
 *.bat
+!requirements.txt 
 
 # ---directories---
 /.vscode/
