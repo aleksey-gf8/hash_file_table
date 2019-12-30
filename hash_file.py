@@ -22,8 +22,20 @@ def get_auditors_list(source_path):
     """ returns a list of auditors who worked on the audit
         taken from a file ".\05  Аудит  СВК\05.00 Содержание.xlsx"
     """
-    source_book = "V:\\05  Аудит  СВК\\05.00 Содержание.xlsx"
-    if not os.path.isfile(source_book):
+    source_books = ["V:\\05  Аудит  СВК\\05.00 Содержание.xlsx",
+                    "V:\\05 Аудит СВК\\05.00 Содержание.xlsx",
+                    "V:\\05 Аудит  СВК\\05.00 Содержание.xlsx",
+                    "V:\\05  Аудит СВК\\05.00 Содержание.xlsx",
+    ]
+    not_found = True
+    for source_book in source_books:
+        if not os.path.isfile(source_book):
+            continue
+        else:
+            not_found = False
+            break
+        
+    if not_found:     
         print('"This file does not exist": {0}'.format(source_book))
         return None  
     # читаем excel-файл
@@ -46,6 +58,7 @@ def get_auditors_list(source_path):
             if sheet.cell(row = row_count, column = 1).value == 'Руководитель проверки:':
                 result.append(sheet.cell(row = row_count, column = 2).value)
                 break
+    print('result= ', result)
     return result
 
 
@@ -234,9 +247,10 @@ def process_create_file_table(source_path, result_path):
     remove_link_to_v()
 
 
-if '__name__' == '__main__':
+if __name__ == '__main__':
 
     source_path = get_source_path()
+    print(source_path)
     result_path = OUT_FILE_NAME
     process_create_file_table(
         source_path,

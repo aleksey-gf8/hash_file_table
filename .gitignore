@@ -11,4 +11,5 @@
 # ---directories---
 /.vscode/
 /venv/
+/env/
 /sample_data/
