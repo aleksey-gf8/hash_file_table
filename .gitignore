@@ -6,10 +6,16 @@
 *.txt
 *.cmd
 *.bat
+*.ico
+*.exe
+*.spec
 !requirements.txt 
 
 # ---directories---
 /.vscode/
+/__pycache__/
+/build/
+/dist/
 /venv/
 /env/
 /sample_data/
