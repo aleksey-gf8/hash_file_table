@@ -9,6 +9,7 @@
 *.ico
 *.exe
 *.spec
+*.log
 !requirements.txt 
 
 # ---directories---

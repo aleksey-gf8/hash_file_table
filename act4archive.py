@@ -1,5 +1,3 @@
-# -*- coding: utf-8-*-
-
 import os
 import sys
 import glob
@@ -11,6 +9,11 @@ from openpyxl.styles import Border, Side, Font, Alignment
 from openpyxl import load_workbook
 import docx
 
+""" $env:MY_SOURCE_PATH
+    $env:MY_RESULT_PATH
+    $env:MY_SKR_VALIDATOR
+    $env:MY_SET_FILE_PROPERTY = "YES"
+"""
 
 # types of files to be processed, skip the others
 FILE_EXTENSION = {'.xlsx', '.xlsm', '.xls', '.docx', '.doc'}
@@ -22,7 +25,7 @@ NAME_SKIP_FOLDER = {'V:\\00 ', 'V:\\01 '}
 OUT_FILE_NAME = r'Акт сдачи в архив электронных документов.xlsx'
 
 # Руководитель Контрольной Службы
-SKR_VALIDATOR = 'Атабиева М.И.'
+SKR_VALIDATOR_CONST = 'Атабиева М.И.'
 
 
 def set_rightly_file_property(file, project_name, auditors_list):
@@ -35,9 +38,11 @@ def set_rightly_file_property(file, project_name, auditors_list):
 
     # check the current list item "file_list" this is a file?
     if not os.path.isfile(file):
-        print(f'This is not file: {file}')
+        print('"This is not file": {0}'.format(file))
+        # this is not a file - we proceed to the next iteration of the loop
         return -20    
-
+    print('file= ', file)
+    
     find_dot = file.rfind('.')
     if find_dot == -1:
         print('i do not find dot.')
@@ -45,13 +50,11 @@ def set_rightly_file_property(file, project_name, auditors_list):
 
     ext_file = file[find_dot:]
     if ext_file == '.xlsx':
-        pass
-        # set_xlsx_file_property(file, project_name, author, boss)
+        print("======== PRINT func set_rightly_file_property: ============ \n file=", file, "\n project_name=", project_name, "\n author=", author, "\n boss=", boss)
+        set_xlsx_file_property(file, project_name, author, boss)
     elif ext_file == '.docx':
         set_docx_file_property(file, project_name, author, boss)
-    elif ext_file == '.xlsm':
-        pass
-
+            
 
 def set_xlsx_file_property(file_name, project_name, author, boss):
     wb = load_workbook(file_name)
@@ -74,7 +77,10 @@ def set_xlsx_file_property(file_name, project_name, author, boss):
     wb.properties.contentStatus="None" # Состояние содержимого
     wb.properties.language="RUS" # Язык
     # Визуально Никуда не идёт: wb.properties.identifier = "None"
+    #debug-print(wb.properties)
+    
     wb.save(file_name)
+    #time.sleep(1)
 
 
 def set_docx_file_property(file_name, project_name, author, boss):
@@ -103,61 +109,50 @@ def set_docx_file_property(file_name, project_name, author, boss):
     time.sleep(1)
 
 
-def get_auditors_list():
+def get_auditors_list(source_path):
     """ returns a list of auditors who worked on the audit
         taken from a file ".\06 Аудит по существу\06.00 Содержание.xlsm"
         if found then return ['Boss_Name', 'Auditor_Name']
         if not found then return return ['НЕ найден', 'НЕ найден']
     """
-    SOURCE_BOOKS = [
-        "V:\\06 Аудит по существу\\06.00 Содержание.xlsm",
-        "V:\\06  Аудит по существу\\06.00 Содержание.xlsm",
-        "V:\\06 Аудит по существу\\06.00  Содержание.xlsm",
-        "V:\\06  Аудит по существу\\06.00  Содержание.xlsm",
-    ]
-    FIND_STRING_BOOS = [
-        'Руководитель задания:',
-        'Руководитель проверки:',
-    ]
-
+    SOURCE_BOOKS = ["V:\\06 Аудит по существу\\06.00 Содержание.xlsx",
+                    "V:\\06 Аудит по существу\\06.00 Содержание.xlsm",
+                    ]
+    auditors_list = ['НЕ найден', 'НЕ найден']
     # checking the file's existence
+    not_found = True
     for source_book in SOURCE_BOOKS:
         if os.path.isfile(source_book):
+            not_found = False
             break
-    else:
-        print(f'This file does not exist: {source_book}')
+    if not_found:
+        print('"This file does not exist": {0}'.format(source_book))
         return ['НЕ найден', 'НЕ найден']
+    
+    #debug-print('source_book= ', source_book)
     # checking the existence of the sheet in the file
     wb = openpyxl.load_workbook(source_book)
     if wb.sheetnames.count('06') == 0:
-        print(f'Sheet name 06 does not exist: {source_book}')
+        print('the sheet named 06 does not exist in the file: {0}'.format(source_book))
         return ['НЕ найден', 'НЕ найден']
-
-    auditors_list = ['НЕ найден',]
+    
     # читаем из excel-файла ФИО аудиторов
-    sheet = wb['06']    # делаем лист '06' активным
-    for row_count in range(1, 41):
-        if sheet.cell(row=row_count, column=1).value in FIND_STRING_BOOS:
+    # делаем лист '06' активным
+    sheet = wb['06']
+    for row_count in range(1, 40):
+        if sheet.cell(row=row_count, column=1).value == 'Руководитель задания:':
             auditors_list[0] = sheet.cell(row=row_count, column=2).value
             break
-
-    for find_count in range(1, 41):
+    for find_count in range(1, 40):
         if sheet.cell(row=find_count, column=1).value == 'Состав группы:':
             break
-    else:
-        auditors_list.append(auditors_list[0])
-        return auditors_list
-
-    for count in range(find_count+1, find_count+5):        
-        if sheet.cell(row=count, column=1).value == 1:
-            auditors_list.append(sheet.cell(row=count, column=2).value)
-        elif sheet.cell(row=count, column=1).value == 2:
-            auditors_list.append(sheet.cell(row=count, column=2).value)
-        elif sheet.cell(row=count, column=1).value == 3:
-            auditors_list.append(sheet.cell(row=count, column=2).value)
-    
-    if len(auditors_list) == 1:
-        auditors_list.append(auditors_list[0])
+    for count1 in range(find_count+1, find_count+5):        
+        if sheet.cell(row=count1, column=1).value == 1:
+            auditors_list[1] = sheet.cell(row=count1, column=2).value
+            break
+    for count2 in range(find_count+1, find_count+5):        
+        if sheet.cell(row=count2, column=1).value == 2:
+            auditors_list.append(sheet.cell(row=count2, column=2).value)
 
     return auditors_list            
 
@@ -174,17 +169,23 @@ def get_source_path():
 
 def get_result_path():
     """ returns the path to the folder where you want to save data (files)
-    
-    if True:
-        # save to the current folder
-        result_path = os.getcwd()
-    else:
-        # save to the project folder
-        result_path = source_path
-    return result_path
     """
-    result_path = os.getcwd()
-    return result_path
+    if "MY_RESULT_PATH" in os.environ:
+        # имя каталога должно быть без кавычек
+        return os.environ["MY_RESULT_PATH"].replace('"', '')
+    else:
+        # save to the current folder
+        return os.getcwd()    
+
+def get_skr_validator():
+    """ returns 'Руководитель Контрольной Службы'
+    """
+    if "MY_SKR_VALIDATOR" in os.environ:
+        # имя должно быть без кавычек
+        return os.environ["MY_SKR_VALIDATOR"].replace('"', '')
+    else:
+        return SKR_VALIDATOR_CONST
+    
 
 def file_is_needed(file):
     """ Check - this file needs to be processed. If need, then return True,
@@ -193,26 +194,34 @@ def file_is_needed(file):
     find_dot = file.rfind('.')
     if find_dot == -1:
         return False
+    
     elif (file[find_dot:] in FILE_EXTENSION):
         find_temp = file.rfind('\\~$')
         if find_temp == -1:
             return True
         else:
-            print(f'This is temporary file={file}, skip')
+            # This is temporary file, skip'
             return False
     else:
         return False
 
-def skip_this_folder(name):
+def skip_this_folder(file):
     """ Check - you need to skip this folder. If need, then return True,
     otherwise - False.
     """
-    return (name[0:6] in NAME_SKIP_FOLDER)
+    return (file[0:6] in NAME_SKIP_FOLDER)
+
+
+def remove_link_to_v():
+    """ Remove the Symbolic link to disk V: """
+    if os.path.exists("V:\\"):
+        subst_command = 'subst /d V:'
+        return os.system(subst_command)
 
 
 def get_hash_md5(filename):
-    """ get hash-MD5 of filename object
-    """
+    """ get hash-MD5 of filename object """
+
     with open(filename, 'rb') as f:
         m = hashlib.md5()
         while True:
@@ -223,23 +232,26 @@ def get_hash_md5(filename):
         return m.hexdigest()
 
 
-def remove_link_to_v():
-    """ Remove the Symbolic link to disk V:
-    """
-    if os.path.exists("V:\\"):
-        subst_command = 'subst /d V:'
-        return os.system(subst_command)
-
-
-def create_link_to_v(source_path):
+def get_file_list(source_path):
     """ get a list of all items in the current directory
     """
+
     # Удаляем Символическую ссылку на диск V: если она существует
     remove_link_to_v()
     # Подключаем Симвлолическую ссылку диск V: указывает на "source_path"
     subst_command = 'subst V: "{0}"'.format(source_path)
+    #debug print(subst_command)
     ret_code = os.system(subst_command)
-    return ret_code
+    if ret_code != 0:
+        print('Символ.ссылка НЕ СДЕЛАНА! V:-> {0} Код возврата subst: {1}'.
+              format(source_path, ret_code))
+        return None
+    else:
+        print('Символ.ссылка СДЕЛАНА диск V: -> {0} Код возврата subst: {1}'.
+              format(source_path, ret_code))
+
+    # создаём рекурсивно список объектов внутри "V:\ (src_dir_level1)"
+    return glob.glob('V:\\**\\*', recursive=True)
 
 
 def create_table_and_set_file_property(
@@ -248,8 +260,14 @@ def create_table_and_set_file_property(
         auditors_list):
     """ create а table from a 'file_list' each row consists of:
     file name + file hash + author + validator
+    Если установлена переменная среды os.environ["MY_SET_FILE_PROPERTY"] == "YES",
+    то устанавливаем у файлов doc и xls нужные свойства
     """
 
+    if ("MY_SET_FILE_PROPERTY" in os.environ) and (os.environ["MY_SET_FILE_PROPERTY"] == "YES"):
+        set_file_prop = True
+    else:
+        set_file_prop = False
     validator = auditors_list[0]    # Проверил
     if len(auditors_list) == 3:
         author = auditors_list[2]   # Автор
@@ -258,22 +276,27 @@ def create_table_and_set_file_property(
 
     result_table = []
     for file in file_list:
-# check the current list item "file_list" - this should be processed or skipped?
+        # check the current list item "file_list" this is a file?
         if not os.path.isfile(file):
-            print(f'We need to skip because it is a folder: {file}')
-            continue
-        if skip_this_folder(file):
-            print(f'We need to skip files in this folder: {file}')
+            print('We need to skip because it is folder and not file: {0}'.format(file))
+            # this is not a file - we proceed to the next iteration of the loop
             continue
         if not file_is_needed(file):
-            print(f'We need to skip because this file is not needed: {file}')
+            print('We need to skip because this file is not needed: {0}'.format(file))
+            # we skip this file and proceed to the next iteration of the loop
             continue
+        if skip_this_folder(file):
+            print('We need to skip files in this folder: {0}'.format(file))
+            # we skip this file and proceed to the next iteration of the loop
+            continue
+        print('обрабатываем файл: {0}'.format(file))
 
-        print(f'обрабатываем файл: {file}')
-        set_rightly_file_property(file, project_name, auditors_list)
-        # create new record in the result_table
+        if set_file_prop:
+            set_rightly_file_property(file, project_name, auditors_list)
         curr_line = {}
         curr_line.update({'file-name': file[2:]})
+        # modtime = time.localtime(os.path.getmtime(file))
+        # curr_line['file_modify'] =time.strftime("%d-%m-%Y %H:%M:%S", modtime)
         curr_line.update({'Hash-MD5': get_hash_md5(file)})
         curr_line['author'] = author
         curr_line['validator'] = validator
@@ -281,7 +304,7 @@ def create_table_and_set_file_property(
     return result_table
 
 
-def save_table_to_xlsx_file(project_name, result_table, result_path):
+def save_table_to_xlsx_file(project_name, result_table, result_path, skr_validator):
     """ write 'result_table' to xlsx file """
 
     wb = openpyxl.Workbook()
@@ -325,15 +348,14 @@ def save_table_to_xlsx_file(project_name, result_table, result_path):
     sheet['E4'].font = Font(bold=True)
     sheet['E4'].border = Border(top=bbb, left=bbb, right=bbb, bottom=bbb)
 
-    row = 5
+    row = 4
     thin = Side(border_style="thin", color="000000")
     for line_dict in result_table:
         row += 1
         col = 1
         cell = sheet.cell(row=row, column=col)
-        # this is a row counter, you need to take into account the empty rows
-        # in the table header
-        cell.value = row-5
+        # это номер строки таблицы с файлами
+        cell.value = row-4
         cell.border = Border(top=thin, left=thin, right=thin, bottom=thin)
 
         for __, val in line_dict.items():
@@ -348,59 +370,60 @@ def save_table_to_xlsx_file(project_name, result_table, result_path):
     cell = sheet.cell(row=row+5, column=col)
     cell.value = f'Руководитель Контрольной Службы:'
     cell = sheet.cell(row=row+5, column=col+3)
-    cell.value = f'{SKR_VALIDATOR}'
+    cell.value = f'{skr_validator}'
     
     file_name = result_path + '\\' + project_name + '_' + OUT_FILE_NAME
     wb.save(file_name)
 
 
-def process_create_file_table(source_path, result_path):
+def process_create_file_table(source_path, result_path, skr_validator):
     """ Creates a list of all files as: file name, hash, author """
 
-    ret_code = create_link_to_v(source_path)
-    if ret_code != 0:
-        print(f'Символ.ссылка V: НЕ СДЕЛАНА! Код возврата subst: {ret_code}')
-        return 10
-    print(f'Символ.ссылка СДЕЛАНА V: -> {source_path}')
-    try:
-        # создаём рекурсивно список объектов внутри "V:"
-        file_list = glob.glob('V:\\**\\*', recursive=True)
-        if file_list is None:
-            print('A list of all items in current directory is not created')
-            # list of files not created
-            return 20
+    file_list = get_file_list(source_path)
+    if file_list is None:
+        print('A list of all items in current directory is not created, RC=-10')
+        return -10
+  
+    project_name = source_path[source_path.rindex('\\') + 1:]
+    auditors_list = get_auditors_list(source_path)
+    print('auditors_list =', *auditors_list)
 
-        auditors_list = get_auditors_list()
-        print('auditors_list = ', *auditors_list)
-        project_name = source_path[source_path.rindex('\\') + 1:]
-        print(f'project_name = {project_name}')
-
-        result_table = create_table_and_set_file_property(
-            file_list,
-            project_name,
-            auditors_list
-            )
-        save_table_to_xlsx_file(project_name, result_table, result_path)
-    finally:
-        remove_link_to_v()
+    result_table = create_table_and_set_file_property(
+        file_list,
+        project_name,
+        auditors_list
+        )
+    
+    save_table_to_xlsx_file(
+        project_name,
+        result_table,
+        result_path,
+        skr_validator
+        )
+  
+    # Удаляем Симвлолическую ссылку на диск V:
+    remove_link_to_v()
     return 0
-
 
 def main(argv=None):
 
     source_path = get_source_path()
-    print(f"source_path = {source_path}")
-    result_path = get_result_path()
-    print (f"result_path = {result_path}")
+    print("source_path = ", source_path)
 
+    result_path = get_result_path()
+    print ("result_path = ", result_path)
+
+    skr_validator = get_skr_validator()
+    print("skr_validator = ", skr_validator)
+    
     ret_code = process_create_file_table(
         source_path,
-        result_path
+        result_path,
+        skr_validator
     )
-
-    print(f"return code = {ret_code}")
+    print("return code =", ret_code)
     return ret_code
 
-
+    
 if __name__ == '__main__':
     sys.exit(main(sys.argv))
