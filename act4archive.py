@@ -3,6 +3,7 @@ import sys
 import glob
 import time
 import datetime
+from datetime import timedelta
 import hashlib
 import openpyxl
 from openpyxl.styles import Border, Side, Font, Alignment
@@ -18,8 +19,29 @@ import docx
 # types of files to be processed, skip the others
 FILE_EXTENSION = {'.xlsx', '.xlsm', '.xls', '.docx', '.doc'}
 
-# you need to skip this folder
-NAME_SKIP_FOLDER = {'V:\\00 ', 'V:\\01 '}
+# types of files to be processed, skip the others
+EXEL_FILE_EXTENSION = {'.xlsx', '.xlsm', '.xls'}
+
+""" you need to skip this folder:
+00 Письма-запросы
+00.1 Письма ГБ
+01 ОСВ и первичка
+02
+10 АЗ и бух. отчетность
+"""
+NAME_SKIP_FOLDER = {'V:\\00 ', 'V:\\00.', 'V:\\01 ', 'V:\\02 ', 'V:\\10 '}
+
+""" Это список папок, кот.нужно обрабатывать:
+03 Инвентаризация  >>> no information about the author
+04 Общая стратегия аудита
+05 План проводимого аудита 
+06 Аудит по существу
+07 Предпосылки
+08 Бухотчетность
+09 Отчет аудитора
+"""
+# Строка поиска = "Проверил,\n выполнил " закодированная в utf-8, потому что есть перевод строки
+KEYWORD1 = b'\xd0\x9f\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xb8\xd0\xbb,\n \xd0\xb2\xd1\x8b\xd0\xbf\xd0\xbe\xd0\xbb\xd0\xbd\xd0\xb8\xd0\xbb '
 
 # name of output file
 OUT_FILE_NAME = r'Акт сдачи в архив электронных документов.xlsx'
@@ -28,14 +50,9 @@ OUT_FILE_NAME = r'Акт сдачи в архив электронных док�
 SKR_VALIDATOR_CONST = 'Атабиева М.И.'
 
 
-def set_rightly_file_property(file, project_name, auditors_list):
+def set_rightly_file_property(file, project_name, author, validator):
 
-    boss = auditors_list[0]
-    if len(auditors_list) == 3:
-        author = auditors_list[2]
-    else:
-        author = auditors_list[1]
-
+    boss = validator
     # check the current list item "file_list" this is a file?
     if not os.path.isfile(file):
         print('"This is not file": {0}'.format(file))
@@ -109,52 +126,53 @@ def set_docx_file_property(file_name, project_name, author, boss):
     time.sleep(1)
 
 
-def get_auditors_list(source_path):
-    """ returns a list of auditors who worked on the audit
-        taken from a file ".\06 Аудит по существу\06.00 Содержание.xlsm"
-        if found then return ['Boss_Name', 'Auditor_Name']
-        if not found then return return ['НЕ найден', 'НЕ найден']
+def get_auditors_list(file):
+    """ returns the auditors(author, validator) who worked on the audit
+        if not found then return 'НЕ найден'
     """
-    SOURCE_BOOKS = ["V:\\06 Аудит по существу\\06.00 Содержание.xlsx",
-                    "V:\\06 Аудит по существу\\06.00 Содержание.xlsm",
-                    ]
-    auditors_list = ['НЕ найден', 'НЕ найден']
+
+    NOT_FOUND = " --- "
     # checking the file's existence
-    not_found = True
-    for source_book in SOURCE_BOOKS:
-        if os.path.isfile(source_book):
-            not_found = False
-            break
-    if not_found:
-        print('"This file does not exist": {0}'.format(source_book))
-        return ['НЕ найден', 'НЕ найден']
-    
-    #debug-print('source_book= ', source_book)
+    find_dot = file.rfind('.')
+    if not (file[find_dot:] in EXEL_FILE_EXTENSION):
+        # Не xls-расширение у файла
+        return NOT_FOUND, NOT_FOUND
+
+    #debug-print('source_book= ', file)
     # checking the existence of the sheet in the file
-    wb = openpyxl.load_workbook(source_book)
-    if wb.sheetnames.count('06') == 0:
-        print('the sheet named 06 does not exist in the file: {0}'.format(source_book))
-        return ['НЕ найден', 'НЕ найден']
+    wb = openpyxl.load_workbook(file)
+    if wb.sheetnames.count('00') == 0:
+        # Не найден лист '00'
+        return NOT_FOUND, NOT_FOUND
     
     # читаем из excel-файла ФИО аудиторов
-    # делаем лист '06' активным
-    sheet = wb['06']
-    for row_count in range(1, 40):
-        if sheet.cell(row=row_count, column=1).value == 'Руководитель задания:':
-            auditors_list[0] = sheet.cell(row=row_count, column=2).value
-            break
-    for find_count in range(1, 40):
-        if sheet.cell(row=find_count, column=1).value == 'Состав группы:':
-            break
-    for count1 in range(find_count+1, find_count+5):        
-        if sheet.cell(row=count1, column=1).value == 1:
-            auditors_list[1] = sheet.cell(row=count1, column=2).value
-            break
-    for count2 in range(find_count+1, find_count+5):        
-        if sheet.cell(row=count2, column=1).value == 2:
-            auditors_list.append(sheet.cell(row=count2, column=2).value)
+    # делаем лист '00' активным; row = строка, , column = столбец
+    sheet = wb['00']
+    found_author = False
+    for row_count in range(17, 18):
+        cell_value = sheet.cell(row=row_count, column=2).value
+        if not(isinstance(cell_value, str)):
+            continue
+        template = cell_value.encode("utf-8")
+        if template == KEYWORD1:
+            cell_value = sheet.cell(row=row_count, column=3).value
+            if isinstance(cell_value, str):
+                validator = cell_value
+            else:
+                validator = NOT_FOUND
+            author = validator
+            if sheet.cell(row=row_count+1, column=2).value == "Заполнил":
+                cell_value =  sheet.cell(row=row_count+1, column=3).value
+                if isinstance(cell_value, str):
+                    author = cell_value
 
-    return auditors_list            
+            found_author = True
+            break
+    
+    if found_author:
+        return author, validator
+    else:
+        return NOT_FOUND, NOT_FOUND           
 
 
 def get_source_path():
@@ -232,7 +250,7 @@ def get_hash_md5(filename):
         return m.hexdigest()
 
 
-def get_file_list(source_path):
+def get_dirty_file_list(source_path):
     """ get a list of all items in the current directory
     """
 
@@ -240,7 +258,7 @@ def get_file_list(source_path):
     remove_link_to_v()
     # Подключаем Симвлолическую ссылку диск V: указывает на "source_path"
     subst_command = 'subst V: "{0}"'.format(source_path)
-    #debug print(subst_command)
+
     ret_code = os.system(subst_command)
     if ret_code != 0:
         print('Символ.ссылка НЕ СДЕЛАНА! V:-> {0} Код возврата subst: {1}'.
@@ -256,23 +274,17 @@ def get_file_list(source_path):
 
 def create_table_and_set_file_property(
         file_list,
-        project_name,
-        auditors_list):
+        project_name):
     """ create а table from a 'file_list' each row consists of:
     file name + file hash + author + validator
     Если установлена переменная среды os.environ["MY_SET_FILE_PROPERTY"] == "YES",
-    то устанавливаем у файлов doc и xls нужные свойства
+    то устанавливаем у файлов doc и xls нужные свойства файла
     """
 
     if ("MY_SET_FILE_PROPERTY" in os.environ) and (os.environ["MY_SET_FILE_PROPERTY"] == "YES"):
         set_file_prop = True
     else:
         set_file_prop = False
-    validator = auditors_list[0]    # Проверил
-    if len(auditors_list) == 3:
-        author = auditors_list[2]   # Автор
-    else:
-        author = auditors_list[1]   # Автор
 
     result_table = []
     for file in file_list:
@@ -291,15 +303,16 @@ def create_table_and_set_file_property(
             continue
         print('обрабатываем файл: {0}'.format(file))
 
+        author, validator = get_auditors_list(file)
         if set_file_prop:
-            set_rightly_file_property(file, project_name, auditors_list)
+            set_rightly_file_property(file, project_name, author, validator)
         curr_line = {}
         curr_line.update({'file-name': file[2:]})
         # modtime = time.localtime(os.path.getmtime(file))
         # curr_line['file_modify'] =time.strftime("%d-%m-%Y %H:%M:%S", modtime)
         curr_line.update({'Hash-MD5': get_hash_md5(file)})
-        curr_line['author'] = author
-        curr_line['validator'] = validator
+        curr_line['author'] = author          # Автор==Заполнил
+        curr_line['validator'] = validator    # Проверил
         result_table.append(curr_line)
     return result_table
 
@@ -338,7 +351,7 @@ def save_table_to_xlsx_file(project_name, result_table, result_path, skr_validat
     sheet['C4'].font = Font(bold=True)
     sheet['C4'].border = Border(top=bbb, left=bbb, right=bbb, bottom=bbb)
 
-    sheet['D4'] = 'Файл создал'
+    sheet['D4'] = 'Файл заполнил'
     sheet.column_dimensions['D'].width = 20
     sheet['D4'].font = Font(bold=True)
     sheet['D4'].border = Border(top=bbb, left=bbb, right=bbb, bottom=bbb)
@@ -379,19 +392,16 @@ def save_table_to_xlsx_file(project_name, result_table, result_path, skr_validat
 def process_create_file_table(source_path, result_path, skr_validator):
     """ Creates a list of all files as: file name, hash, author """
 
-    file_list = get_file_list(source_path)
+    file_list = get_dirty_file_list(source_path)
     if file_list is None:
         print('A list of all items in current directory is not created, RC=-10')
         return -10
   
     project_name = source_path[source_path.rindex('\\') + 1:]
-    auditors_list = get_auditors_list(source_path)
-    print('auditors_list =', *auditors_list)
 
     result_table = create_table_and_set_file_property(
         file_list,
-        project_name,
-        auditors_list
+        project_name
         )
     
     save_table_to_xlsx_file(
@@ -406,7 +416,7 @@ def process_create_file_table(source_path, result_path, skr_validator):
     return 0
 
 def main(argv=None):
-
+    start_time = time.monotonic()
     source_path = get_source_path()
     print("source_path = ", source_path)
 
@@ -421,9 +431,13 @@ def main(argv=None):
         result_path,
         skr_validator
     )
+    end_time = time.monotonic()
+    print("Сгенерирован акт в каталоге ", result_path,
+         "\nпо проекту ", source_path, 
+         "\nВремя выполнения: ", timedelta(seconds=end_time - start_time))
     print("return code =", ret_code)
     return ret_code
 
-    
+
 if __name__ == '__main__':
     sys.exit(main(sys.argv))
